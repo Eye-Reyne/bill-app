@@ -34,7 +34,7 @@ type Department = {
   name: string;
 };
 
-const BillItemsScreen = ({ navigation }: any) => {
+export default function BillItemsScreen ({ navigation }: any) {
   const db = useSQLiteContext();
   const [billItems, setBillItems] = useState<BillItem[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -149,7 +149,12 @@ const BillItemsScreen = ({ navigation }: any) => {
     }
 
     try {
-      const billItemData: BillItem = {
+      const billItemData: {
+        name: string;
+        amount: number;
+        departmentId: number;
+        id?: number;
+      } = {
         name: itemName.trim(),
         amount,
         departmentId: selectedDepartmentId,
@@ -157,8 +162,12 @@ const BillItemsScreen = ({ navigation }: any) => {
 
       if (editingItem) {
         // Update existing item
+        if (!editingItem.id) {
+          Alert.alert('Error', 'Invalid item ID');
+          return;
+        }
         billItemData.id = editingItem.id;
-        await updateBillItem(db, billItemData);
+        await updateBillItem(db, billItemData as { id: number; name: string; amount: number; departmentId: number });
         
         // Update local state
         setBillItems(prevItems =>
@@ -245,7 +254,7 @@ const BillItemsScreen = ({ navigation }: any) => {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <AdminHeader />
+      <AdminHeader title="Bill Items" />
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -406,17 +415,18 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'SemiBold',
     color: '#1C1C1E',
   },
   itemDepartment: {
     fontSize: 14,
     color: '#8E8E93',
     marginTop: 2,
+    fontFamily: 'Regular',
   },
   itemAmount: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'SemiBold',
     color: '#007AFF',
     marginTop: 4,
   },
@@ -538,4 +548,3 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BillItemsScreen;

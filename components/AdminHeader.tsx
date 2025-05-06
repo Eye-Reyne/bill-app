@@ -12,7 +12,8 @@ interface HeaderProps {
 const AdminHeader: React.FC<HeaderProps> = ({ title }) => {
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const handleNavigate = (route: '/' | '/students' | '/departments' | '/enrollments') => {
+  const handleNavigate = (route: '/' | '/students' 
+    | '/departments' | '/enrollments' | '/bill-items' | '/department-students' ) => {
     setMenuVisible(false);
     router.push(route as any);
   };
@@ -50,13 +51,23 @@ const AdminHeader: React.FC<HeaderProps> = ({ title }) => {
             </TouchableOpacity>
             
             <TouchableOpacity onPress={() => handleNavigate('/departments')} style={styles.menuItemContainer}>
-              <Ionicons name="folder" size={20} color="black" />
+              <Ionicons name="business" size={20} color="black" />
               <Text style={styles.menuItemText}>Departments</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => handleNavigate('/enrollments')} style={styles.menuItemContainer}>
               <Ionicons name="folder" size={20} color="black" />
               <Text style={styles.menuItemText}>Enrollments</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => handleNavigate('/bill-items')} style={styles.menuItemContainer}>
+              <Ionicons name="wallet" size={20} color="black" />
+              <Text style={styles.menuItemText}>Bill Items</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => handleNavigate('/department-students')} style={styles.menuItemContainer}>
+              <Ionicons name="file-tray" size={20} color="black" />
+              <Text style={styles.menuItemText}>Departmett Studentsett Studentsett Studentsent Students</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

@@ -11,6 +11,8 @@ export default function AdminLayout() {
         <Stack.Screen name="students" options={{ headerShown: false }} />
         <Stack.Screen name="departments" options={{ headerShown: false }} />
         <Stack.Screen name="enrollments" options={{ headerShown: false }} />
+        <Stack.Screen name="bill-items" options={{ headerShown: false }} />
+        <Stack.Screen name="department-students" options={{ headerShown: false }} />
       </Stack>
 
   );

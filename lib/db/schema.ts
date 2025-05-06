@@ -20,9 +20,10 @@ export interface BaseEntity {
     name: string;
     term: string;
     year: string;
-    description?: string; // Added description field
-    startDate?: string; // Start date of the academic term
-    endDate?: string; // End date of the academic term
+    description?: string;
+    startDate?: string;
+    endDate?: string;
+    billItems?: BillItem[]; // Added bill items
   }
   
   export interface StudentDepartment extends BaseEntity {
@@ -157,6 +158,27 @@ export interface BaseEntity {
       totalUnpaid: number;
       bills: Bill[];
     }[];
+  }
+  
+  export interface CreateDepartmentPayload {
+    name: string;
+    term: string;
+    year: string;
+    description?: string;
+    startDate?: string;
+    endDate?: string;
+    billItems?: {
+        name: string;
+        amount: number;
+        description?: string;
+        category?: string;
+        isRequired?: boolean;
+    }[];
+  }
+  
+  export interface DepartmentWithBillItems extends Department {
+    billItems: BillItem[];
+    totalAmount: number;
   }
   
   // Helper Functions

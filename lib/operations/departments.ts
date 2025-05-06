@@ -1,7 +1,8 @@
 // lib/operations/departments.ts
 
 import { SQLiteDatabase } from "expo-sqlite";
-import { Department, Student } from "../db/schema";
+import { Department, Student, CreateDepartmentPayload, DepartmentWithBillItems, BillItem } from "../db/schema";
+import { addBillItem } from './bill-items';
 
 /**
  * Create a new department
@@ -80,32 +81,54 @@ export async function getDepartmentById(db: SQLiteDatabase, id: number): Promise
  * @param department Department data with ID
  * @returns Whether the update was successful
  */
-export async function updateDepartment(db: SQLiteDatabase, department: Department): Promise<boolean> {
-    const { id, name, term, year, description, startDate, endDate, isActive} = department
+export async function updateDepartment(
+    db: SQLiteDatabase,
+    department: Department & { billItems?: { name: string; amount: number; description?: string; category?: string; isRequired?: boolean; }[] }
+): Promise<Department> {
+    if (!department.id) {
+        throw new Error("Department ID is required for update");
+    }
+
+    await db.execAsync('BEGIN TRANSACTION');
+    
     try {
-        if (!id) {
-            throw new Error("Department ID is required for update.");
-        }
-        const result = await db.runAsync(
-            "UPDATE departments SET name = ?, term = ?, year = ?, description = ?, startDate = ?, endDate = ?, isActive = ? WHERE id = ?",
-            name,
-            term,
-            year,
-            description ?? null,
-            startDate ?? null,
-            endDate ?? null,
-            isActive ?? null,
-            id
-
-
-
-
+        // 1. Update department
+        await db.runAsync(`
+            UPDATE departments 
+            SET name = ?, term = ?, year = ?, description = ?, startDate = ?, endDate = ?
+            WHERE id = ?
+        `,
+            department.name,
+            department.term,
+            department.year,
+            department.description || null,
+            department.startDate || null,
+            department.endDate || null,
+            department.id
         );
-        // Check if any rows were changed
-        // If changes > 0, the update was successful
-        // If changes = 0, the department was not found or no changes were made
-        return result.changes > 0;
+
+        // 2. If bill items are provided, update them
+        if (department.billItems) {
+            // First, delete existing bill items
+            await db.runAsync('DELETE FROM bill_items WHERE departmentId = ?', department.id);
+
+            // Then, add new bill items
+            for (const item of department.billItems) {
+                await addBillItem(db, {
+                    name: item.name,
+                    amount: item.amount,
+                    description: item.description,
+                    category: item.category,
+                    isRequired: item.isRequired,
+                    departmentId: department.id
+                });
+            }
+        }
+
+        await db.execAsync('COMMIT');
+        return department;
     } catch (error) {
+        await db.execAsync('ROLLBACK');
         console.error('Error updating department:', error);
         throw error;
     }
@@ -166,6 +189,101 @@ export async function getStudentsInDepartmentById(db: SQLiteDatabase, department
         return students;
     } catch (error) {
         console.error(`Error getting students in department with ID ${departmentId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Create a new department with bill items
+ * @param db Database instance
+ * @param department Department data with bill items
+ * @returns Newly created department with ID
+ */
+export async function createDepartment(db: SQLiteDatabase, department: CreateDepartmentPayload): Promise<DepartmentWithBillItems> {
+    await db.execAsync('BEGIN TRANSACTION');
+    
+    try {
+        // 1. Create department
+        const result = await db.runAsync(
+            "INSERT INTO departments (name, term, year, description, startDate, endDate) VALUES (?, ?, ?, ?, ?, ?)",
+            department.name,
+            department.term,
+            department.year,
+            department.description ?? null,
+            department.startDate ?? null,
+            department.endDate ?? null
+        );
+
+        const departmentId = result.lastInsertRowId;
+        let totalAmount = 0;
+        const billItems: BillItem[] = [];
+
+        // 2. Create bill items if provided
+        if (department.billItems && department.billItems.length > 0) {
+            for (const item of department.billItems) {
+                const billItem = await addBillItem(db, {
+                    ...item,
+                    departmentId
+                });
+                billItems.push(billItem);
+                totalAmount += item.amount;
+            }
+        }
+
+        await db.execAsync('COMMIT');
+
+        return {
+            id: departmentId,
+            name: department.name,
+            term: department.term,
+            year: department.year,
+            description: department.description,
+            startDate: department.startDate,
+            endDate: department.endDate,
+            billItems,
+            totalAmount
+        };
+    } catch (error) {
+        await db.execAsync('ROLLBACK');
+        console.error('Error creating department:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get a department with its bill items
+ * @param db Database instance
+ * @param departmentId Department ID
+ * @returns Department with bill items and total amount
+ */
+export async function getDepartmentWithBillItems(db: SQLiteDatabase, departmentId: number): Promise<DepartmentWithBillItems | null> {
+    try {
+        // 1. Get department
+        const department = await db.getFirstAsync<Department>(
+            'SELECT * FROM departments WHERE id = ?',
+            departmentId
+        );
+
+        if (!department) {
+            return null;
+        }
+
+        // 2. Get bill items
+        const billItems = await db.getAllAsync<BillItem>(
+            'SELECT * FROM bill_items WHERE departmentId = ?',
+            departmentId
+        );
+
+        // 3. Calculate total amount
+        const totalAmount = billItems.reduce((sum, item) => sum + item.amount, 0);
+
+        return {
+            ...department,
+            billItems,
+            totalAmount
+        };
+    } catch (error) {
+        console.error('Error getting department with bill items:', error);
         throw error;
     }
 }

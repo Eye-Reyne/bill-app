@@ -16,10 +16,18 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  ScrollView
 } from 'react-native';
-import { Department } from '../../lib/db/schema';
+import { Department, CreateDepartmentPayload } from '../../lib/db/schema';
 
+interface BillItemForm {
+  name: string;
+  amount: string;
+  description?: string;
+  category?: string;
+  isRequired?: boolean;
+}
 
 export default function DepartmentsScreen() {
   const db = useSQLiteContext();
@@ -29,13 +37,16 @@ export default function DepartmentsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
-  const [newDepartment, setNewDepartment] = useState<Department>({
-    id: undefined,
-    name: '',
-    term: '',
-    year: ''
-  });
   const [isEditing, setIsEditing] = useState(false);
+
+  // Form state
+  const [departmentName, setDepartmentName] = useState('');
+  const [term, setTerm] = useState('');
+  const [year, setYear] = useState('');
+  const [description, setDescription] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [billItems, setBillItems] = useState<BillItemForm[]>([]);
 
   // Fetch departments from the database on mount
   useEffect(() => {
@@ -74,29 +85,69 @@ export default function DepartmentsScreen() {
     }
   }
 
+  // Add new bill item
+  const addBillItem = () => {
+    setBillItems([...billItems, { name: '', amount: '' }]);
+  };
+
+  // Remove bill item
+  const removeBillItem = (index: number) => {
+    setBillItems(billItems.filter((_, i) => i !== index));
+  };
+
+  // Update bill item
+  const updateBillItem = (index: number, field: keyof BillItemForm, value: string | boolean) => {
+    const newBillItems = [...billItems];
+    newBillItems[index] = { ...newBillItems[index], [field]: value };
+    setBillItems(newBillItems);
+  };
+
   // Handle adding a new department
   const saveDepartment = async () => {
     try {
       // Validate form
-      if (!newDepartment.name || !newDepartment.term || !newDepartment.year) {
-        Alert.alert('Error', 'Please fill in all fields.');
+      if (!departmentName || !term || !year) {
+        Alert.alert('Error', 'Please fill in all required fields.');
+        return;
+      }
+
+      // Validate bill items
+      const invalidBillItems = billItems.filter(item => !item.name || !item.amount || isNaN(Number(item.amount)));
+      if (invalidBillItems.length > 0) {
+        Alert.alert('Error', 'Please fill in all bill item fields correctly.');
         return;
       }
       
       setLoading(true);
+      const departmentData: CreateDepartmentPayload = {
+        name: departmentName,
+        term,
+        year,
+        description: description || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        billItems: billItems.map(item => ({
+          name: item.name,
+          amount: Number(item.amount),
+          description: item.description,
+          category: item.category,
+          isRequired: item.isRequired
+        }))
+      };
+
       if (isEditing && selectedDepartment) {
         // Update existing department
         await DepartmentOperations.updateDepartment(db, {
           ...selectedDepartment,
-          ...newDepartment
+          ...departmentData
         });
       } else {
         // Add new department
-        await DepartmentOperations.addDepartment(db, newDepartment);
+        await DepartmentOperations.createDepartment(db, departmentData);
       }
+
       // Reset Form
-      setNewDepartment({ id: undefined, name: '', term: '', year: '' });
-      setIsEditing(false);
+      resetForm();
       setModalVisible(false);
       await loadDepartments();
       setError(null);
@@ -108,6 +159,19 @@ export default function DepartmentsScreen() {
       setLoading(false);
     }
   }
+
+  // Reset form
+  const resetForm = () => {
+    setDepartmentName('');
+    setTerm('');
+    setYear('');
+    setDescription('');
+    setStartDate('');
+    setEndDate('');
+    setBillItems([]);
+    setIsEditing(false);
+    setSelectedDepartment(null);
+  };
 
   // Handle deleting a department
   const deleteDepartment = async (id: number) => {
@@ -127,91 +191,27 @@ export default function DepartmentsScreen() {
   // Handle selecting a department for editing
   const handleEdit = (department: Department) => {
     setSelectedDepartment(department);
-    setNewDepartment({ ...department });
+    setDepartmentName(department.name);
+    setTerm(department.term);
+    setYear(department.year);
+    setDescription(department.description || '');
+    setStartDate(department.startDate || '');
+    setEndDate(department.endDate || '');
     setIsEditing(true);
     setModalVisible(true);
   };
 
   // Handle opening the modal for adding a new department
   const openAddModal = () => {
-    setNewDepartment({ id: undefined, name: '', term: '', year: '' });
-    setIsEditing(false);
+    resetForm();
     setModalVisible(true);
   };
 
   // Handle closing the modal
   const closeModal = () => {
     setModalVisible(false);
-    setSelectedDepartment(null);
-    setNewDepartment({ id: undefined, name: '', term: '', year: '' });
-    setIsEditing(false);
+    resetForm();
   }
-
-  // Handle search input change
-  const handleSearchInputChange = (text: string) => {
-    setSearchQuery(text);
-  };
-
-  // Handle search button press
-  const handleSearchButtonPress = () => {
-    handleSearch();
-  };
-
-  // Handle clear search button press
-  const handleClearSearchButtonPress = () => {
-    setSearchQuery('');
-    loadDepartments(); // Changed to directly call loadDepartments instead of handleSearch
-  };
-
-  // Handle modal close on backdrop press
-  const handleBackdropPress = () => {
-    closeModal();
-  };
-
-  // Handle modal content press to prevent closing
-  const handleModalContentPress = (e: any) => {
-    // Prevent event from bubbling up to backdrop
-    e.stopPropagation();
-  };
-
-  // Handle modal close on cancel button press
-  const handleCancelButtonPress = () => {
-    closeModal();
-  };
-
-  // Handle modal close on save button press
-  const handleSaveButtonPress = () => {
-    saveDepartment();
-  };
-
-  // Handle modal close on delete button press
-  const handleDeleteButtonPress = async () => {
-    if (selectedDepartment) {
-      Alert.alert(
-        "Confirm Delete",
-        `Are you sure you want to delete ${selectedDepartment.name}?`,
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          { 
-            text: "Delete", 
-            onPress: async () => {
-              await deleteDepartment(selectedDepartment.id!);
-              closeModal();
-            },
-            style: "destructive"
-          }
-        ]
-      );
-    }
-  };
-
-  // View Department Details
-  // const viewDepartmentDetails = (department: Department) => {
-  //   setSelectedDepartment(department);
-  // };
 
   // Render each department item in the list
   const renderDepartmentItem = ({ item }: { item: Department }) => (
@@ -298,13 +298,14 @@ export default function DepartmentsScreen() {
             style={styles.searchInput}
             placeholder="Search departments..."
             value={searchQuery}
-            onChangeText={handleSearchInputChange}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={handleSearch}
           />
           <View style={styles.buttonContainer}>
-            <TouchableOpacity onPress={handleSearchButtonPress} style={styles.searchButton}>
+            <TouchableOpacity onPress={handleSearch} style={styles.searchButton}>
               <Text style={styles.searchButtonText}>Search</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleClearSearchButtonPress} style={styles.clearButton}>
+            <TouchableOpacity onPress={() => { setSearchQuery(''); loadDepartments(); }} style={styles.clearButton}>
               <Text style={styles.clearButtonText}>Clear</Text>
             </TouchableOpacity>
           </View>
@@ -329,41 +330,131 @@ export default function DepartmentsScreen() {
           visible={modalVisible}
           onRequestClose={closeModal}
         >
-          <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
-            <Pressable style={styles.modalContent} onPress={handleModalContentPress}>
-              <Text style={styles.modalTitle}>{isEditing ? 'Edit Department' : 'Add Department'}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Department Name"
-                value={newDepartment.name}
-                onChangeText={(text) => setNewDepartment({ ...newDepartment, name: text })}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Term"
-                value={newDepartment.term}
-                onChangeText={(text) => setNewDepartment({ ...newDepartment, term: text })}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Year"
-                value={newDepartment.year}
-                onChangeText={(text) => setNewDepartment({ ...newDepartment, year: text })}
-                keyboardType="numeric"
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity onPress={handleCancelButtonPress} style={styles.cancelButton}>
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleSaveButtonPress} style={styles.saveButton}>
-                  <Text style={styles.saveButtonText}>{isEditing ? 'Update' : 'Save'}</Text>
-                </TouchableOpacity>
-              </View>
-              {isEditing && (
-                <TouchableOpacity onPress={handleDeleteButtonPress} style={styles.deleteButton}>
-                  <Text style={styles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
-              )}
+          <Pressable style={styles.backdrop} onPress={closeModal}>
+            <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+              <ScrollView style={styles.modalScrollView}>
+                <Text style={styles.modalTitle}>
+                  {isEditing ? 'Edit Department' : 'Add Department'}
+                </Text>
+
+                <Text style={styles.inputLabel}>Department Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter department name"
+                  value={departmentName}
+                  onChangeText={setDepartmentName}
+                />
+
+                <Text style={styles.inputLabel}>Term *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter term"
+                  value={term}
+                  onChangeText={setTerm}
+                />
+
+                <Text style={styles.inputLabel}>Year *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter year"
+                  value={year}
+                  onChangeText={setYear}
+                  keyboardType="numeric"
+                />
+
+                <Text style={styles.inputLabel}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Enter description"
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+                />
+
+                <Text style={styles.inputLabel}>Start Date</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                />
+
+                <Text style={styles.inputLabel}>End Date</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  value={endDate}
+                  onChangeText={setEndDate}
+                />
+
+                <View style={styles.billItemsSection}>
+                  <Text style={styles.sectionTitle}>Bill Items</Text>
+                  {billItems.map((item, index) => (
+                    <View key={index} style={styles.billItemContainer}>
+                      <View style={styles.billItemHeader}>
+                        <Text style={styles.billItemTitle}>Item {index + 1}</Text>
+                        <TouchableOpacity
+                          onPress={() => removeBillItem(index)}
+                          style={styles.removeButton}
+                        >
+                          <Ionicons name="close-circle" size={24} color="red" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.inputLabel}>Name *</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter item name"
+                        value={item.name}
+                        onChangeText={(value) => updateBillItem(index, 'name', value)}
+                      />
+
+                      <Text style={styles.inputLabel}>Amount *</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter amount"
+                        value={item.amount}
+                        onChangeText={(value) => updateBillItem(index, 'amount', value)}
+                        keyboardType="decimal-pad"
+                      />
+
+                      <Text style={styles.inputLabel}>Description</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter description"
+                        value={item.description}
+                        onChangeText={(value) => updateBillItem(index, 'description', value)}
+                      />
+
+                      <Text style={styles.inputLabel}>Category</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter category"
+                        value={item.category}
+                        onChangeText={(value) => updateBillItem(index, 'category', value)}
+                      />
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    onPress={addBillItem}
+                    style={styles.addBillItemButton}
+                  >
+                    <Ionicons name="add-circle" size={24} color="#007AFF" />
+                    <Text style={styles.addBillItemText}>Add Bill Item</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity onPress={closeModal} style={styles.cancelButton}>
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={saveDepartment} style={styles.saveButton}>
+                    <Text style={styles.saveButtonText}>{isEditing ? 'Update' : 'Save'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
@@ -509,22 +600,32 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    width: '80%',
+    width: '90%',
+    maxHeight: '90%',
     backgroundColor: 'white',
     borderRadius: 10,
     padding: 20,
-    alignItems: 'center',
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
+  modalScrollView: {
+    maxHeight: '100%',
+  },
   modalTitle: {
     fontSize: 20,
     fontFamily: 'Bold',
     color: '#333',
     marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontFamily: 'Medium',
+    color: '#333',
+    marginBottom: 5,
   },
   input: {
     width: '100%',
@@ -534,11 +635,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginBottom: 15,
   },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginTop: 10,
+    marginTop: 20,
   },
   cancelButton: {
     flex: 1,
@@ -565,17 +670,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'SemiBold',
   },
-  deleteButton: {
-    backgroundColor: '#dc3545',
-    padding: 12,
-    borderRadius: 5,
-    marginTop: 15,
-    width: '100%',
-    alignItems: 'center',
+  billItemsSection: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#ccc',
+    paddingTop: 20,
   },
-  deleteButtonText: {
-    color: 'white',
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Bold',
+    color: '#333',
+    marginBottom: 15,
+  },
+  billItemContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  billItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  billItemTitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: 'SemiBold',
+    color: '#333',
+  },
+  removeButton: {
+    padding: 5,
+  },
+  addBillItemButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  addBillItemText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#007AFF',
+    fontFamily: 'Medium',
   },
 });
